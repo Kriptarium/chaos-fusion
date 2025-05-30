@@ -143,12 +143,14 @@ if uploaded_file:
             st.pyplot(fig2)
 
             st.subheader("🧠 Advanced Chaos Metrics (Entire Series)")
+            summary_data = []
             for label, ts in [(col1, series1_full), (col2, series2_full), ("Fused", (weight1/100)*series1_full + (weight2/100)*series2_full)]:
-                st.markdown(f"### 🔍 {label} Analysis")
                 rqa = rqa_metrics(ts, dim=embed_dim, tau=tau)
                 entropy = entropy_metrics(ts)
                 r2 = nonlinear_forecasting(ts)
                 combined = {**rqa, **entropy, "1-Step Forecast R²": r2}
+                summary_data.append((label, combined))
+                st.markdown(f"### 🔍 {label} Analysis")
                 st.json(combined)
 
             st.markdown("---")
@@ -164,3 +166,16 @@ if uploaded_file:
             st.markdown(f"- 🔻 Least chaotic signal on average: **{least_chaotic}**")
             trend = res_df["Lyapunov (Fused)"].iloc[-1] - res_df["Lyapunov (Fused)"].iloc[0]
             st.markdown(f"- 📈 Fused chaos {'increases' if trend > 0 else 'decreases'} with longer series length.")
+
+            st.markdown("---")
+            st.subheader("📌 Entropy & RQA-Based Observations")
+            for label, metrics in summary_data:
+                ent = metrics["Permutation Entropy"]
+                apx = metrics["Approximate Entropy"]
+                det = metrics["Determinism"]
+                r2_score_val = metrics["1-Step Forecast R²"]
+                st.markdown(f"#### 🔎 {label}")
+                st.markdown(f"- Permutation Entropy: {ent:.3f} → {'High disorder' if ent > 0.8 else 'Moderate/Low disorder'}")
+                st.markdown(f"- Approximate Entropy: {apx:.3f} → {'Unpredictable' if apx > 0.7 else 'More predictable'}")
+                st.markdown(f"- RQA Determinism: {det:.3f} → {'Strongly deterministic' if det > 0.8 else 'Weakly deterministic'}")
+                st.markdown(f"- 1-Step Forecast R²: {r2_score_val:.3f} → {'High predictability' if r2_score_val > 0.6 else 'Low predictability'}")
