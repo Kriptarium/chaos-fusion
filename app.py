@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.linear_model import LinearRegression
 
-# --- Lyapunov Functions ---
+# ---- Lyapunov Functions ----
 def estimate_lyapunov(ts, emb_dim=5, tau=1, max_t=50):
     n = len(ts) - (emb_dim - 1) * tau
     if n <= max_t:
@@ -36,9 +36,9 @@ def estimate_slope(divergence, steps=20):
     model = LinearRegression().fit(X, y)
     return model.coef_[0]
 
-# --- Streamlit App ---
+# ---- Streamlit App ----
 st.set_page_config(page_title="CHAOS-Fusion", layout="wide")
-st.title("🔬 CHAOS-Fusion: General-Purpose Lyapunov & Fusion Analyzer")
+st.title("🔬 CHAOS-Fusion: General Lyapunov & Fusion Analyzer")
 
 uploaded_file = st.file_uploader("📂 Upload a CSV file with at least two numeric time series", type=["csv"])
 
@@ -64,13 +64,11 @@ if uploaded_file:
         embed_dim = st.slider("Embedding Dimension (m)", 2, 10, 5)
         tau = st.slider("Time Delay (τ)", 1, 5, 1)
         max_t = st.slider("Max Time Step", 10, 100, 50)
-        lengths = [500, 1000, 2000, 5000]
+        lengths = list(range(500, min(5000, min_len), 500))
 
         if st.button("🚀 Run Analysis"):
             results = []
             for L in lengths:
-                if L > len(series1_full):
-                    continue
                 s1 = series1_full[:L]
                 s2 = series2_full[:L]
                 fused = (weight1 / 100) * s1 + (weight2 / 100) * s2
@@ -95,22 +93,39 @@ if uploaded_file:
             res_df = pd.DataFrame(results)
 
             st.success("✅ Analysis Complete")
-            st.subheader("📊 Lyapunov Comparison Table")
+            st.subheader("📊 Lyapunov Exponents Comparison Table")
             st.dataframe(res_df)
 
-            st.subheader("📈 Fused Signal Lyapunov vs. Length")
+            # GRAPH 1
+            st.subheader("📈 Lyapunov vs. Length (Fused Signal)")
             fig1 = plt.figure(figsize=(10, 5))
             sns.lineplot(data=res_df, x="Length", y="Lyapunov (Fused)", marker="o", label="Fused")
-            plt.title("Lyapunov Exponent vs. Series Length (Fused)")
             plt.grid(True)
             st.pyplot(fig1)
 
+            # GRAPH 2
             st.subheader("📉 All Signals Comparison")
             fig2 = plt.figure(figsize=(10, 5))
             sns.lineplot(data=res_df, x="Length", y=f"Lyapunov ({col1})", label=col1, marker="o")
             sns.lineplot(data=res_df, x="Length", y=f"Lyapunov ({col2})", label=col2, marker="o")
             sns.lineplot(data=res_df, x="Length", y="Lyapunov (Fused)", label="Fused", linestyle="--", marker="o")
-            plt.title("Lyapunov Comparison by Signal and Length")
             plt.grid(True)
             plt.legend()
             st.pyplot(fig2)
+
+            # INTERPRETATION SECTION
+            st.subheader("🧠 Automated Interpretation")
+
+            mean_1 = res_df[f"Lyapunov ({col1})"].mean()
+            mean_2 = res_df[f"Lyapunov ({col2})"].mean()
+            mean_fused = res_df["Lyapunov (Fused)"].mean()
+
+            most_chaotic = max([(col1, mean_1), (col2, mean_2), ('Fused', mean_fused)], key=lambda x: x[1])[0]
+            least_chaotic = min([(col1, mean_1), (col2, mean_2), ('Fused', mean_fused)], key=lambda x: x[1])[0]
+
+            st.markdown(f"""
+            - 📌 **Most chaotic signal** on average: **{most_chaotic}**
+            - 📌 **Least chaotic signal**: **{least_chaotic}**
+            - 📉 As length increases, fused signal tends to show {'increased' if res_df['Lyapunov (Fused)'].iloc[-1] > res_df['Lyapunov (Fused)'].iloc[0] else 'decreased or stable'} Lyapunov exponent.
+            - ⚖️ Fusion with {weight1}% {col1} and {weight2}% {col2} appears to {'dampen' if mean_fused < max(mean_1, mean_2) else 'amplify'} chaos compared to individual signals.
+            """)
