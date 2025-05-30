@@ -4,19 +4,19 @@ import matplotlib.pyplot as plt
 from lyapunov_utils import estimate_lyapunov, estimate_slope
 
 st.set_page_config(page_title="CHAOS-Fusion", layout="centered")
-st.title("🔬 CHAOS-Fusion: Data Fusion & Lyapunov Analysis")
+st.title("🔬 CHAOS-Fusion: General-Purpose Lyapunov and Fusion Analysis")
 
-uploaded_file = st.file_uploader("Upload a CSV file with at least two numeric time series", type=["csv"])
+uploaded_file = st.file_uploader("Upload a CSV file with at least two numeric columns", type=["csv"])
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-    numeric_cols = df.select_dtypes(include='number').columns.tolist()
+    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
 
     if len(numeric_cols) < 2:
-        st.error("CSV file must contain at least two numeric columns.")
+        st.error("The CSV must contain at least two numeric columns.")
     else:
-        col1 = st.selectbox("Select first column (e.g., IMU)", numeric_cols, index=0)
-        col2 = st.selectbox("Select second column (e.g., GPS)", numeric_cols, index=1)
+        col1 = st.selectbox("Select First Time Series Column", numeric_cols, index=0)
+        col2 = st.selectbox("Select Second Time Series Column", numeric_cols, index=1)
 
         s1 = pd.to_numeric(df[col1].dropna(), errors='coerce').dropna().values
         s2 = pd.to_numeric(df[col2].dropna(), errors='coerce').dropna().values
@@ -30,9 +30,9 @@ if uploaded_file:
         max_t = st.slider("Max Time Step", 10, 100, 50)
 
         if len(s1) < emb_dim * tau + 10:
-            st.error("Time series too short for given parameters.")
+            st.error("Time series too short for selected parameters.")
         elif st.button("🚀 Run Analysis"):
-            with st.spinner("Analyzing..."):
+            with st.spinner("Computing Lyapunov exponents..."):
                 try:
                     div_s1 = estimate_lyapunov(s1, emb_dim, tau, max_t)
                     div_s2 = estimate_lyapunov(s2, emb_dim, tau, max_t)
@@ -42,24 +42,23 @@ if uploaded_file:
                     slope_s2 = estimate_slope(div_s2)
                     slope_fused = estimate_slope(div_fused)
 
-                    st.success(f"Lyapunov Exponents:")
+                    st.success("Estimated Largest Lyapunov Exponents:")
                     st.write(f"• {col1}: **{slope_s1:.4f}**")
                     st.write(f"• {col2}: **{slope_s2:.4f}**")
-                    st.write(f"• Fused: **{slope_fused:.4f}**")
+                    st.write(f"• Fused ({col1} + {col2}) / 2: **{slope_fused:.4f}**")
 
-                    st.subheader("📈 Divergence Comparison")
+                    st.subheader("📈 Lyapunov Divergence Curves")
                     fig, ax = plt.subplots()
-                    ax.plot(div_s1, label=f"{col1}")
-                    ax.plot(div_s2, label=f"{col2}")
-                    ax.plot(div_fused, label="Fused", linewidth=2, linestyle='--')
+                    ax.plot(div_s1, label=col1)
+                    ax.plot(div_s2, label=col2)
+                    ax.plot(div_fused, label="Fused", linestyle='--', linewidth=2)
                     ax.set_xlabel("Time Step")
                     ax.set_ylabel("log(Distance)")
-                    ax.set_title("Lyapunov Divergence Curves")
+                    ax.set_title("Lyapunov Divergence Curve Comparison")
                     ax.legend()
                     ax.grid(True)
                     st.pyplot(fig)
-
                 except Exception as e:
-                    st.error(f"An error occurred during analysis: {e}")
+                    st.error(f"An error occurred: {e}")
 else:
-    st.info("Please upload a CSV file with at least two numeric columns.")
+    st.info("Please upload a valid CSV file to begin.")
