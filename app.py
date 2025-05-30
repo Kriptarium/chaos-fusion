@@ -4,8 +4,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
+import antropy as ant
+from pyunicorn.timeseries.recurrence_plot import RecurrencePlot
 
-# ---- Lyapunov Functions ----
+# -------------------- ANALYSIS FUNCTIONS --------------------
 def estimate_lyapunov(ts, emb_dim=5, tau=1, max_t=50):
     n = len(ts) - (emb_dim - 1) * tau
     if n <= max_t:
@@ -36,9 +39,39 @@ def estimate_slope(divergence, steps=20):
     model = LinearRegression().fit(X, y)
     return model.coef_[0]
 
-# ---- Streamlit App ----
-st.set_page_config(page_title="CHAOS-Fusion", layout="wide")
-st.title("🔬 CHAOS-Fusion: General Lyapunov & Fusion Analyzer")
+def rqa_metrics(time_series, dim=2, tau=1):
+    ts = (time_series - np.mean(time_series)) / np.std(time_series)
+    rp = RecurrencePlot(ts, dim=dim, tau=tau, metric='euclidean', normalize=False)
+    return {
+        "Recurrence Rate": rp.recurrence_rate(),
+        "Determinism": rp.determinism(),
+        "Entropy (RQA)": rp.entropy(),
+        "Laminarity": rp.laminarity(),
+        "Trapping Time": rp.trapping_time()
+    }
+
+def entropy_metrics(ts):
+    return {
+        "Permutation Entropy": ant.perm_entropy(ts, normalize=True),
+        "Approximate Entropy": ant.app_entropy(ts)
+    }
+
+def nonlinear_forecasting(ts, steps_ahead=1, window=10):
+    X, y = [], []
+    for i in range(len(ts) - window - steps_ahead):
+        X.append(ts[i:i + window])
+        y.append(ts[i + window + steps_ahead - 1])
+    X = np.array(X)
+    y = np.array(y)
+    if len(X) < 10:
+        return 0.0
+    model = LinearRegression().fit(X, y)
+    y_pred = model.predict(X)
+    return r2_score(y, y_pred)
+
+# -------------------- STREAMLIT APP --------------------
+st.set_page_config(page_title="CHAOS-Fusion Pro", layout="wide")
+st.title("🔬 CHAOS-Fusion Pro: General Chaos Analysis for Time Series")
 
 uploaded_file = st.file_uploader("📂 Upload a CSV file with at least two numeric time series", type=["csv"])
 
@@ -58,7 +91,6 @@ if uploaded_file:
         series1_full = series1_full[:min_len]
         series2_full = series2_full[:min_len]
 
-        st.subheader("⚙️ Configure Analysis")
         weight1 = st.slider(f"{col1} Weight (%)", 0, 100, 70, step=10)
         weight2 = 100 - weight1
         embed_dim = st.slider("Embedding Dimension (m)", 2, 10, 5)
@@ -66,7 +98,7 @@ if uploaded_file:
         max_t = st.slider("Max Time Step", 10, 100, 50)
         lengths = list(range(500, min(5000, min_len), 500))
 
-        if st.button("🚀 Run Analysis"):
+        if st.button("🚀 Run Full Analysis"):
             results = []
             for L in lengths:
                 s1 = series1_full[:L]
@@ -92,18 +124,15 @@ if uploaded_file:
 
             res_df = pd.DataFrame(results)
 
-            st.success("✅ Analysis Complete")
-            st.subheader("📊 Lyapunov Exponents Comparison Table")
+            st.subheader("📊 Lyapunov Exponent Table")
             st.dataframe(res_df)
 
-            # GRAPH 1
-            st.subheader("📈 Lyapunov vs. Length (Fused Signal)")
+            st.subheader("📈 Fused Signal Lyapunov vs. Length")
             fig1 = plt.figure(figsize=(10, 5))
-            sns.lineplot(data=res_df, x="Length", y="Lyapunov (Fused)", marker="o", label="Fused")
+            sns.lineplot(data=res_df, x="Length", y="Lyapunov (Fused)", marker="o")
             plt.grid(True)
             st.pyplot(fig1)
 
-            # GRAPH 2
             st.subheader("📉 All Signals Comparison")
             fig2 = plt.figure(figsize=(10, 5))
             sns.lineplot(data=res_df, x="Length", y=f"Lyapunov ({col1})", label=col1, marker="o")
@@ -113,19 +142,25 @@ if uploaded_file:
             plt.legend()
             st.pyplot(fig2)
 
-            # INTERPRETATION SECTION
-            st.subheader("🧠 Automated Interpretation")
+            st.subheader("🧠 Advanced Chaos Metrics (Entire Series)")
+            for label, ts in [(col1, series1_full), (col2, series2_full), ("Fused", (weight1/100)*series1_full + (weight2/100)*series2_full)]:
+                st.markdown(f"### 🔍 {label} Analysis")
+                rqa = rqa_metrics(ts, dim=embed_dim, tau=tau)
+                entropy = entropy_metrics(ts)
+                r2 = nonlinear_forecasting(ts)
+                combined = {**rqa, **entropy, "1-Step Forecast R²": r2}
+                st.json(combined)
 
-            mean_1 = res_df[f"Lyapunov ({col1})"].mean()
-            mean_2 = res_df[f"Lyapunov ({col2})"].mean()
-            mean_fused = res_df["Lyapunov (Fused)"].mean()
-
-            most_chaotic = max([(col1, mean_1), (col2, mean_2), ('Fused', mean_fused)], key=lambda x: x[1])[0]
-            least_chaotic = min([(col1, mean_1), (col2, mean_2), ('Fused', mean_fused)], key=lambda x: x[1])[0]
-
-            st.markdown(f"""
-            - 📌 **Most chaotic signal** on average: **{most_chaotic}**
-            - 📌 **Least chaotic signal**: **{least_chaotic}**
-            - 📉 As length increases, fused signal tends to show {'increased' if res_df['Lyapunov (Fused)'].iloc[-1] > res_df['Lyapunov (Fused)'].iloc[0] else 'decreased or stable'} Lyapunov exponent.
-            - ⚖️ Fusion with {weight1}% {col1} and {weight2}% {col2} appears to {'dampen' if mean_fused < max(mean_1, mean_2) else 'amplify'} chaos compared to individual signals.
-            """)
+            st.markdown("---")
+            st.subheader("📌 Interpretation Summary")
+            mean_vals = {
+                col1: res_df[f"Lyapunov ({col1})"].mean(),
+                col2: res_df[f"Lyapunov ({col2})"].mean(),
+                "Fused": res_df["Lyapunov (Fused)"].mean()
+            }
+            most_chaotic = max(mean_vals.items(), key=lambda x: x[1])[0]
+            least_chaotic = min(mean_vals.items(), key=lambda x: x[1])[0]
+            st.markdown(f"- 🔺 Most chaotic signal on average: **{most_chaotic}**")
+            st.markdown(f"- 🔻 Least chaotic signal on average: **{least_chaotic}**")
+            trend = res_df["Lyapunov (Fused)"].iloc[-1] - res_df["Lyapunov (Fused)"].iloc[0]
+            st.markdown(f"- 📈 Fused chaos {'increases' if trend > 0 else 'decreases'} with longer series length.")
