@@ -4,11 +4,14 @@ from sklearn.linear_model import LinearRegression
 
 def estimate_lyapunov(ts, emb_dim=5, tau=1, max_t=50):
     n = len(ts) - (emb_dim - 1) * tau
+    if n <= 1:
+        raise ValueError("Time series too short for selected embedding dimension and delay.")
+    
     emb_data = np.array([ts[i:i + n] for i in range(0, emb_dim * tau, tau)]).T
     dists = np.linalg.norm(emb_data[:, None, :] - emb_data[None, :, :], axis=2)
     np.fill_diagonal(dists, np.inf)
     nearest_idx = np.argmin(dists, axis=1)
-    
+
     divergence = []
     for t in range(1, max_t):
         dist_sum = 0
@@ -27,6 +30,8 @@ def estimate_lyapunov(ts, emb_dim=5, tau=1, max_t=50):
     return np.array(divergence)
 
 def estimate_slope(divergence, steps=20):
+    if len(divergence) < steps:
+        steps = len(divergence)
     X = np.arange(steps).reshape(-1, 1)
     y = divergence[:steps]
     model = LinearRegression().fit(X, y)
